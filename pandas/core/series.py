@@ -2897,6 +2897,9 @@ def _sanitize_array(data, index, dtype=None, copy=False,
 
         subarr = _possibly_cast_to_datetime(subarr, dtype)
 
+    elif data is None:
+        subarr = np.array(np.nan)
+
     else:
         subarr = _try_cast(data, False)
 
