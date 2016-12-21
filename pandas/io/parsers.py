@@ -167,6 +167,10 @@ default False
     * dict, e.g. {'foo' : [1, 3]} -> parse columns 1, 3 as date and call result
       'foo'
 
+    If a column or index contains an unparseable date, the entire column or
+    index will be returned unaltered as an object data type. For non-standard
+    datetime parsing, use ``pd.to_datetime`` after ``pd.read_csv``
+
     Note: A fast-path exists for iso8601-formatted dates.
 infer_datetime_format : boolean, default False
     If True and parse_dates is enabled, pandas will attempt to infer the format
@@ -2051,9 +2055,27 @@ class PythonParser(ParserBase):
         else:
             clean_dtypes = _clean_mapping(self.dtype)
 
-        return self._convert_to_ndarrays(data, self.na_values, self.na_fvalues,
-                                         self.verbose, clean_conv,
-                                         clean_dtypes)
+        # Apply NA values.
+        clean_na_values = {}
+        clean_na_fvalues = {}
+
+        if isinstance(self.na_values, dict):
+            for col in self.na_values:
+                na_value = self.na_values[col]
+                na_fvalue = self.na_fvalues[col]
+
+                if isinstance(col, int) and col not in self.orig_names:
+                    col = self.orig_names[col]
+
+                clean_na_values[col] = na_value
+                clean_na_fvalues[col] = na_fvalue
+        else:
+            clean_na_values = self.na_values
+            clean_na_fvalues = self.na_fvalues
+
+        return self._convert_to_ndarrays(data, clean_na_values,
+                                         clean_na_fvalues, self.verbose,
+                                         clean_conv, clean_dtypes)
 
     def _to_recarray(self, data, columns):
         dtypes = []
@@ -2763,6 +2785,7 @@ def _clean_na_values(na_values, keep_default_na=True):
             na_values = []
         na_fvalues = set()
     elif isinstance(na_values, dict):
+        na_values = na_values.copy()  # Prevent aliasing.
         if keep_default_na:
             for k, v in compat.iteritems(na_values):
                 if not is_list_like(v):
