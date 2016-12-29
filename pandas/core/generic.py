@@ -690,7 +690,7 @@ class NDFrame(PandasObject):
     def rename_axis(self, mapper, axis=0, copy=True, inplace=False):
         """
         Alter index and / or columns using input function or functions.
-        A scaler or list-like for ``mapper`` will alter the ``Index.name``
+        A scalar or list-like for ``mapper`` will alter the ``Index.name``
         or ``MultiIndex.names`` attribute.
         A function or dict for ``mapper`` will alter the labels.
         Function / dict values must be unique (1-to-1). Labels not contained in
@@ -4229,11 +4229,11 @@ class NDFrame(PandasObject):
         Upsample the series into 30 second bins.
 
         >>> series.resample('30S').asfreq()[0:5] #select first 5 rows
-        2000-01-01 00:00:00     0
+        2000-01-01 00:00:00   0.0
         2000-01-01 00:00:30   NaN
-        2000-01-01 00:01:00     1
+        2000-01-01 00:01:00   1.0
         2000-01-01 00:01:30   NaN
-        2000-01-01 00:02:00     2
+        2000-01-01 00:02:00   2.0
         Freq: 30S, dtype: float64
 
         Upsample the series into 30 second bins and fill the ``NaN``
