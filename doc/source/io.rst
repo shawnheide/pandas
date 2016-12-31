@@ -502,7 +502,7 @@ worth trying.
    .. ipython:: python
         :okwarning:
 
-        df = pd.DataFrame({'col_1':range(500000) + ['a', 'b'] + range(500000)})
+        df = pd.DataFrame({'col_1': list(range(500000)) + ['a', 'b'] + list(range(500000))})
         df.to_csv('foo')
         mixed_df = pd.read_csv('foo')
         mixed_df['col_1'].apply(type).value_counts()
@@ -4198,13 +4198,13 @@ Write to a feather file.
 
 .. ipython:: python
 
-   df.to_feather('example.fth')
+   df.to_feather('example.feather')
 
 Read from a feather file.
 
 .. ipython:: python
 
-   result = pd.read_feather('example.fth')
+   result = pd.read_feather('example.feather')
    result
 
    # we preserve dtypes
@@ -4214,7 +4214,7 @@ Read from a feather file.
    :suppress:
 
    import os
-   os.remove('example.fth')
+   os.remove('example.feather')
 
 .. _io.sql:
 
