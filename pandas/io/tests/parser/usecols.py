@@ -200,6 +200,26 @@ a,b,c
                            parse_dates=parse_dates)
         tm.assert_frame_equal(df, expected)
 
+        # See gh-13604
+        s = """2008-02-07 09:40,1032.43
+        2008-02-07 09:50,1042.54
+        2008-02-07 10:00,1051.65
+        """
+        parse_dates = [0]
+        names = ['date', 'values']
+        usecols = names[:]
+
+        index = Index([Timestamp('2008-02-07 09:40'),
+                       Timestamp('2008-02-07 09:50'),
+                       Timestamp('2008-02-07 10:00')],
+                      name='date')
+        cols = {'values': [1032.43, 1042.54, 1051.65]}
+        expected = DataFrame(cols, index=index)
+
+        df = self.read_csv(StringIO(s), parse_dates=parse_dates, index_col=0,
+                           usecols=usecols, header=None, names=names)
+        tm.assert_frame_equal(df, expected)
+
         # See gh-14792
         s = """a,b,c,d,e,f,g,h,i,j
         2016/09/21,1,1,2,3,4,5,6,7,8"""
@@ -419,4 +439,29 @@ a,b,c
         # an empty DataFrame
         expected = DataFrame()
         df = self.read_csv(StringIO(s), usecols=lambda x: False)
+        tm.assert_frame_equal(df, expected)
+
+    def test_incomplete_first_row(self):
+        # see gh-6710
+        data = '1,2\n1,2,3'
+        names = ['a', 'b', 'c']
+        expected = DataFrame({'a': [1, 1],
+                              'c': [np.nan, 3]})
+
+        usecols = ['a', 'c']
+        df = self.read_csv(StringIO(data), names=names, usecols=usecols)
+        tm.assert_frame_equal(df, expected)
+
+        usecols = lambda x: x in ['a', 'c']
+        df = self.read_csv(StringIO(data), names=names, usecols=usecols)
+        tm.assert_frame_equal(df, expected)
+
+    def test_uneven_length_cols(self):
+        # see gh-8985
+        usecols = [0, 1, 2]
+        data = '19,29,39\n' * 2 + '10,20,30,40'
+        expected = DataFrame([[19, 29, 39],
+                              [19, 29, 39],
+                              [10, 20, 30]])
+        df = self.read_csv(StringIO(data), header=None, usecols=usecols)
         tm.assert_frame_equal(df, expected)

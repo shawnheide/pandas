@@ -325,8 +325,11 @@ encoding : str, default ``None``
   Python standard encodings
   <https://docs.python.org/3/library/codecs.html#standard-encodings>`_.
 dialect : str or :class:`python:csv.Dialect` instance, default ``None``
-  If ``None`` defaults to Excel dialect. Ignored if sep longer than 1 char. See
-  :class:`python:csv.Dialect` documentation for more details.
+  If provided, this parameter will override values (default or not) for the
+  following parameters: `delimiter`, `doublequote`, `escapechar`,
+  `skipinitialspace`, `quotechar`, and `quoting`. If it is necessary to
+  override values, a ParserWarning will be issued. See :class:`python:csv.Dialect`
+  documentation for more details.
 tupleize_cols : boolean, default ``False``
   Leave a list of tuples on columns as is (default is to convert to a MultiIndex
   on the columns).
@@ -640,6 +643,15 @@ file, either using the column names, position numbers or a callable:
     pd.read_csv(StringIO(data), usecols=['b', 'd'])
     pd.read_csv(StringIO(data), usecols=[0, 2, 3])
     pd.read_csv(StringIO(data), usecols=lambda x: x.upper() in ['A', 'C'])
+
+The ``usecols`` argument can also be used to specify which columns not to
+use in the final result:
+
+.. ipython:: python
+   pd.read_csv(StringIO(data), usecols=lambda x: x not in ['a', 'c'])
+
+In this case, the callable is specifying that we exclude the "a" and "c"
+columns from the output.
 
 Comments and Empty Lines
 ''''''''''''''''''''''''
@@ -1202,6 +1214,19 @@ You can elect to skip bad lines:
        a  b   c
     0  1  2   3
     1  8  9  10
+
+You can also use the ``usecols`` parameter to eliminate extraneous column
+data that appear in some lines but not others:
+
+.. code-block:: ipython
+
+   In [30]: pd.read_csv(StringIO(data), usecols=[0, 1, 2])
+
+    Out[30]:
+       a  b   c
+    0  1  2   3
+    1  4  5   6
+    2  8  9  10
 
 .. _io.quoting:
 
@@ -2369,7 +2394,7 @@ read into memory only once.
 
 .. code-block:: python
 
-   xlsx = pd.ExcelFile('path_to_file.xls)
+   xlsx = pd.ExcelFile('path_to_file.xls')
    df = pd.read_excel(xlsx, 'Sheet1')
 
 The ``ExcelFile`` class can also be used as a context manager.
@@ -4648,6 +4673,22 @@ destination DataFrame as well as a preferred column order as follows:
    data_frame = pd.read_gbq('SELECT * FROM test_dataset.test_table',
                              index_col='index_column_name',
                              col_order=['col1', 'col2', 'col3'], projectid)
+
+
+Starting with 0.20.0, you can specify the query config as parameter to use additional options of your job.
+For more information about query configuration parameters see 
+`here <https://cloud.google.com/bigquery/docs/reference/rest/v2/jobs#configuration.query>`__.
+
+.. code-block:: python
+
+   configuration = {
+      'query': {
+        "useQueryCache": False
+      }
+   }
+   data_frame = pd.read_gbq('SELECT * FROM test_dataset.test_table',
+                             configuration=configuration, projectid)
+
 
 .. note::
 

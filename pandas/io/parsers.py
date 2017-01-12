@@ -244,8 +244,11 @@ encoding : str, default None
     standard encodings
     <https://docs.python.org/3/library/codecs.html#standard-encodings>`_
 dialect : str or csv.Dialect instance, default None
-    If None defaults to Excel dialect. Ignored if sep longer than 1 char
-    See csv.Dialect documentation for more details
+    If provided, this parameter will override values (default or not) for the
+    following parameters: `delimiter`, `doublequote`, `escapechar`,
+    `skipinitialspace`, `quotechar`, and `quoting`. If it is necessary to
+    override values, a ParserWarning will be issued. See csv.Dialect
+    documentation for more details.
 tupleize_cols : boolean, default False
     Leave a list of tuples on columns as is (default is to convert to
     a Multi Index on the columns)
@@ -320,7 +323,7 @@ colspecs : list of pairs (int, int) or 'infer'. optional
     fields of each line as half-open intervals (i.e.,  [from, to[ ).
     String value 'infer' can be used to instruct the parser to try
     detecting the column specifications from the first 100 rows of
-    the data (default='infer').
+    the data which are not being skipped via skiprows (default='infer').
 widths : list of ints. optional
     A list of field widths which can be used instead of 'colspecs' if
     the intervals are contiguous.
@@ -698,12 +701,33 @@ class TextFileReader(BaseIterator):
             dialect = kwds['dialect']
             if dialect in csv.list_dialects():
                 dialect = csv.get_dialect(dialect)
-            kwds['delimiter'] = dialect.delimiter
-            kwds['doublequote'] = dialect.doublequote
-            kwds['escapechar'] = dialect.escapechar
-            kwds['skipinitialspace'] = dialect.skipinitialspace
-            kwds['quotechar'] = dialect.quotechar
-            kwds['quoting'] = dialect.quoting
+
+            # Any valid dialect should have these attributes.
+            # If any are missing, we will raise automatically.
+            for param in ('delimiter', 'doublequote', 'escapechar',
+                          'skipinitialspace', 'quotechar', 'quoting'):
+                try:
+                    dialect_val = getattr(dialect, param)
+                except AttributeError:
+                    raise ValueError("Invalid dialect '{dialect}' provided"
+                                     .format(dialect=kwds['dialect']))
+                provided = kwds.get(param, _parser_defaults[param])
+
+                # Messages for conflicting values between the dialect instance
+                # and the actual parameters provided.
+                conflict_msgs = []
+
+                if dialect_val != provided:
+                    conflict_msgs.append((
+                        "Conflicting values for '{param}': '{val}' was "
+                        "provided, but the dialect specifies '{diaval}'. "
+                        "Using the dialect-specified value.".format(
+                            param=param, val=provided, diaval=dialect_val)))
+
+                if conflict_msgs:
+                    warnings.warn('\n\n'.join(conflict_msgs), ParserWarning,
+                                  stacklevel=2)
+                kwds[param] = dialect_val
 
         if kwds.get('header', 'infer') == 'infer':
             kwds['header'] = 0 if kwds.get('names') is None else None
@@ -815,6 +839,17 @@ class TextFileReader(BaseIterator):
                                   " is > 1 char long, and the 'c' engine" \
                                   " does not support such separators".format(
                                       encoding=encoding)
+                engine = 'python'
+
+        quotechar = options['quotechar']
+        if (quotechar is not None and
+                isinstance(quotechar, (str, compat.text_type, bytes))):
+            if (len(quotechar) == 1 and ord(quotechar) > 127 and
+                    engine not in ('python', 'python-fwf')):
+                fallback_reason = ("ord(quotechar) > 127, meaning the "
+                                   "quotechar is larger than one byte, "
+                                   "and the 'c' engine does not support "
+                                   "such quotechars")
                 engine = 'python'
 
         if fallback_reason and engine_specified:
@@ -2260,11 +2295,12 @@ class PythonParser(ParserBase):
                     columns = [lrange(ncols)]
                 columns = self._handle_usecols(columns, columns[0])
             else:
-                if self.usecols is None or len(names) == num_original_columns:
+                if self.usecols is None or len(names) >= num_original_columns:
                     columns = self._handle_usecols([names], names)
                     num_original_columns = len(names)
                 else:
-                    if self.usecols and len(names) != len(self.usecols):
+                    if (not callable(self.usecols) and
+                            len(names) != len(self.usecols)):
                         raise ValueError(
                             'Number of passed names did not match number of '
                             'header fields in the file'
@@ -2999,13 +3035,13 @@ class FixedWidthReader(BaseIterator):
     A reader of fixed-width lines.
     """
 
-    def __init__(self, f, colspecs, delimiter, comment):
+    def __init__(self, f, colspecs, delimiter, comment, skiprows=None):
         self.f = f
         self.buffer = None
         self.delimiter = '\r\n' + delimiter if delimiter else '\n\r\t '
         self.comment = comment
         if colspecs == 'infer':
-            self.colspecs = self.detect_colspecs()
+            self.colspecs = self.detect_colspecs(skiprows=skiprows)
         else:
             self.colspecs = colspecs
 
@@ -3014,7 +3050,6 @@ class FixedWidthReader(BaseIterator):
                             "input was a %r" % type(colspecs).__name__)
 
         for colspec in self.colspecs:
-
             if not (isinstance(colspec, (tuple, list)) and
                     len(colspec) == 2 and
                     isinstance(colspec[0], (int, np.integer, type(None))) and
@@ -3022,20 +3057,50 @@ class FixedWidthReader(BaseIterator):
                 raise TypeError('Each column specification must be '
                                 '2 element tuple or list of integers')
 
-    def get_rows(self, n):
-        rows = []
-        for i, row in enumerate(self.f, 1):
-            rows.append(row)
-            if i >= n:
-                break
-        self.buffer = iter(rows)
-        return rows
+    def get_rows(self, n, skiprows=None):
+        """
+        Read rows from self.f, skipping as specified.
 
-    def detect_colspecs(self, n=100):
+        We distinguish buffer_rows (the first <= n lines)
+        from the rows returned to detect_colspecs because
+        it's simpler to leave the other locations with
+        skiprows logic alone than to modify them to deal
+        with the fact we skipped some rows here as well.
+
+        Parameters
+        ----------
+        n : int
+            Number of rows to read from self.f, not counting
+            rows that are skipped.
+        skiprows: set, optional
+            Indices of rows to skip.
+
+        Returns
+        -------
+        detect_rows : list of str
+            A list containing the rows to read.
+
+        """
+        if skiprows is None:
+            skiprows = set()
+        buffer_rows = []
+        detect_rows = []
+        for i, row in enumerate(self.f):
+            if i not in skiprows:
+                detect_rows.append(row)
+            buffer_rows.append(row)
+            if len(detect_rows) >= n:
+                break
+        self.buffer = iter(buffer_rows)
+        return detect_rows
+
+    def detect_colspecs(self, n=100, skiprows=None):
         # Regex escape the delimiters
         delimiters = ''.join([r'\%s' % x for x in self.delimiter])
         pattern = re.compile('([^%s]+)' % delimiters)
-        rows = self.get_rows(n)
+        rows = self.get_rows(n, skiprows)
+        if not rows:
+            raise EmptyDataError("No rows from which to infer column width")
         max_len = max(map(len, rows))
         mask = np.zeros(max_len + 1, dtype=int)
         if self.comment is not None:
@@ -3046,7 +3111,8 @@ class FixedWidthReader(BaseIterator):
         shifted = np.roll(mask, 1)
         shifted[0] = 0
         edges = np.where((mask ^ shifted) == 1)[0]
-        return list(zip(edges[::2], edges[1::2]))
+        edge_pairs = list(zip(edges[::2], edges[1::2]))
+        return edge_pairs
 
     def __next__(self):
         if self.buffer is not None:
@@ -3071,9 +3137,8 @@ class FixedWidthFieldParser(PythonParser):
     def __init__(self, f, **kwds):
         # Support iterators, convert to a list.
         self.colspecs = kwds.pop('colspecs')
-
         PythonParser.__init__(self, f, **kwds)
 
     def _make_reader(self, f):
         self.data = FixedWidthReader(f, self.colspecs, self.delimiter,
-                                     self.comment)
+                                     self.comment, self.skiprows)

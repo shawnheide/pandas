@@ -100,6 +100,8 @@ Other enhancements
 - ``pd.read_excel`` now preserves sheet order when using ``sheetname=None`` (:issue:`9930`)
 - Multiple offset aliases with decimal points are now supported (e.g. '0.5min' is parsed as '30s') (:issue:`8419`)
 
+- ``pd.read_gbq`` method now allows query configuration preferences (:issue:`14742`)
+
 - New ``UnsortedIndexError`` (subclass of ``KeyError``) raised when indexing/slicing into an
   unsorted MultiIndex (:issue:`11897`). This allows differentiation between errors due to lack
   of sorting or an incorrect key. See :ref:`here <advanced.unsorted>`
@@ -243,6 +245,10 @@ Other API Changes
 - ``SparseArray.cumsum()`` and ``SparseSeries.cumsum()`` will now always return ``SparseArray`` and ``SparseSeries`` respectively (:issue:`12855`)
 - ``DataFrame.applymap()`` with an empty ``DataFrame`` will return a copy of the empty ``DataFrame`` instead of a ``Series`` (:issue:`8222`)
 
+- ``pd.read_csv()`` will now issue a ``ParserWarning`` whenever there are conflicting values provided by the ``dialect`` parameter and the user (:issue:`14898`)
+- ``pd.read_csv()`` will now raise a ``ValueError`` for the C engine if the quote character is larger than than one byte (:issue:`11592`)
+- ``inplace`` arguments now require a boolean value, else a ``ValueError`` is thrown (:issue:`14189`)
+
 .. _whatsnew_0200.deprecations:
 
 Deprecations
@@ -254,8 +260,8 @@ Deprecations
 - ``Index.repeat()`` and ``MultiIndex.repeat()`` have deprecated the ``n`` parameter in favor of ``repeats`` (:issue:`12662`)
 - ``Categorical.searchsorted()`` and ``Series.searchsorted()`` have deprecated the ``v`` parameter in favor of ``value`` (:issue:`12662`)
 - ``TimedeltaIndex.searchsorted()``, ``DatetimeIndex.searchsorted()``, and ``PeriodIndex.searchsorted()`` have deprecated the ``key`` parameter in favor of ``value`` (:issue:`12662`)
-
-
+- ``DataFrame.astype()`` has deprecated the ``raise_on_error`` parameter in favor of ``errors`` (:issue:`14878`)
+- ``Series.sortlevel`` and ``DataFrame.sortlevel`` have been deprecated in favor of ``Series.sort_index`` and ``DataFrame.sort_index`` (:issue:`15099`)
 
 
 .. _whatsnew_0200.prior_deprecations:
@@ -275,6 +281,11 @@ Performance Improvements
 
 - Improved performance of ``pd.wide_to_long()`` (:issue:`14779`)
 - Increased performance of ``pd.factorize()`` by releasing the GIL with ``object`` dtype when inferred as strings (:issue:`14859`)
+- Improved performance of timeseries plotting with an irregular DatetimeIndex
+  (or with ``compat_x=True``) (:issue:`15073`).
+- Improved performance of ``groupby().cummin()`` and ``groupby().cummax()`` (:issue:`15048`)
+
+- When reading buffer object in ``read_sas()`` method without specified format, filepath string is inferred rather than buffer object.
 
 
 
@@ -286,12 +297,18 @@ Bug Fixes
 - Bug in ``Index`` power operations with reversed operands (:issue:`14973`)
 - Bug in ``TimedeltaIndex`` addition where overflow was being allowed without error (:issue:`14816`)
 - Bug in ``DataFrame`` construction in which unsigned 64-bit integer elements were being converted to objects (:issue:`14881`)
+- Bug in ``pd.read_csv()`` in which unsigned 64-bit integer elements were being improperly converted to the wrong data types (:issue:`14983`)
 - Bug in ``astype()`` where ``inf`` values were incorrectly converted to integers. Now raises error now with ``astype()`` for Series and DataFrames (:issue:`14265`)
 - Bug in ``DataFrame(..).apply(to_numeric)`` when values are of type decimal.Decimal. (:issue:`14827`)
 - Bug in ``describe()`` when passing a numpy array which does not contain the median to the ``percentiles`` keyword argument (:issue:`14908`)
 - Bug in ``DataFrame.sort_values()`` when sorting by multiple columns where one column is of type ``int64`` and contains ``NaT`` (:issue:`14922`)
 - Bug in ``DataFrame.reindex()`` in which ``method`` was ignored when passing ``columns`` (:issue:`14992`)
+- Bug in ``pd.to_numeric()`` in which float and unsigned integer elements were being improperly casted (:issue:`14941`, :issue:`15005`)
+- Bug in ``pd.read_csv()`` in which the ``dialect`` parameter was not being verified before processing (:issue:`14898`)
+- Bug in ``pd.read_fwf`` where the skiprows parameter was not being respected during column width inference (:issue:`11256`)
+- Bug in ``pd.read_csv()`` in which missing data was being improperly handled with ``usecols`` (:issue:`6710`)
 
+- Bug in ``DataFrame.loc`` with indexing a ``MultiIndex`` with a ``Series`` indexer (:issue:`14730`)
 
 - Bug in ``pd.read_msgpack()`` in which ``Series`` categoricals were being improperly processed (:issue:`14901`)
 - Bug in ``Series.ffill()`` with mixed dtypes containing tz-aware datetimes. (:issue:`14956`)
@@ -300,7 +317,7 @@ Bug Fixes
 
 - Bug in ``Series`` construction with a datetimetz (:issue:`14928`)
 
-
+- Bug in compat for passing long integers to ``Timestamp.replace`` (:issue:`15030`)
 
 
 
@@ -323,6 +340,7 @@ Bug Fixes
 
 
 
+- Bug in ``resample``, where a non-string ```loffset`` argument would not be applied when resampling a timeseries (:issue:`13218`)
 
 
 
@@ -332,4 +350,15 @@ Bug Fixes
 - Require at least 0.23 version of cython to avoid problems with character encodings (:issue:`14699`)
 - Bug in converting object elements of array-like objects to unsigned 64-bit integers (:issue:`4471`, :issue:`14982`)
 - Bug in ``pd.pivot_table()`` where no error was raised when values argument was not in the columns (:issue:`14938`)
+
+
+
+
+
+
+
+
+
+
+
 - Bug in ``pd.read_csv()`` for the C engine where ``usecols`` were being indexed incorrectly with ``parse_dates`` (:issue:`14792`)
