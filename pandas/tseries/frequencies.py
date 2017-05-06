@@ -6,20 +6,21 @@ import warnings
 
 import numpy as np
 
-from pandas.types.generic import ABCSeries
-from pandas.types.common import (is_integer,
-                                 is_period_arraylike,
-                                 is_timedelta64_dtype,
-                                 is_datetime64_dtype)
+from pandas.core.dtypes.generic import ABCSeries
+from pandas.core.dtypes.common import (
+    is_integer,
+    is_period_arraylike,
+    is_timedelta64_dtype,
+    is_datetime64_dtype)
 
 import pandas.core.algorithms as algos
 from pandas.core.algorithms import unique
 from pandas.tseries.offsets import DateOffset
-from pandas.util.decorators import cache_readonly, deprecate_kwarg
+from pandas.util._decorators import cache_readonly, deprecate_kwarg
 import pandas.tseries.offsets as offsets
-import pandas.lib as lib
-import pandas.tslib as tslib
-from pandas.tslib import Timedelta
+
+from pandas._libs import lib, tslib
+from pandas._libs.tslib import Timedelta
 from pytz import AmbiguousTimeError
 
 
@@ -660,6 +661,7 @@ def get_standard_freq(freq):
     warnings.warn(msg, FutureWarning, stacklevel=2)
     return to_offset(freq).rule_code
 
+
 # ---------------------------------------------------------------------
 # Period codes
 
@@ -794,6 +796,7 @@ def infer_freq(index, warn=True):
 
     inferer = _FrequencyInferer(index, warn=warn)
     return inferer.get_freq()
+
 
 _ONE_MICRO = long(1000)
 _ONE_MILLI = _ONE_MICRO * 1000

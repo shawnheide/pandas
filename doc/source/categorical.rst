@@ -230,6 +230,15 @@ Categories must be unique or a `ValueError` is raised:
     except ValueError as e:
         print("ValueError: " + str(e))
 
+Categories must also not be ``NaN`` or a `ValueError` is raised:
+
+.. ipython:: python
+
+    try:
+        s.cat.categories = [1,2,np.nan]
+    except ValueError as e:
+        print("ValueError: " + str(e))
+
 Appending new categories
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -482,7 +491,7 @@ Pivot tables:
 Data munging
 ------------
 
-The optimized pandas data access methods  ``.loc``, ``.iloc``, ``.ix`` ``.at``, and ``.iat``,
+The optimized pandas data access methods  ``.loc``, ``.iloc``, ``.at``, and ``.iat``,
 work as normal. The only difference is the return type (for getting) and
 that only values already in `categories` can be assigned.
 
@@ -501,7 +510,6 @@ the ``category`` dtype is preserved.
     df.iloc[2:4,:]
     df.iloc[2:4,:].dtypes
     df.loc["h":"j","cats"]
-    df.ix["h":"j",0:1]
     df[df["cats"] == "b"]
 
 An example where the category type is not preserved is if you take one single row: the
@@ -618,6 +626,7 @@ Assigning a `Categorical` to parts of a column of other types will use the value
     df
     df.dtypes
 
+.. _categorical.merge:
 
 Merging
 ~~~~~~~
@@ -647,6 +656,9 @@ In this case the categories are not the same and so an error is raised:
 
 The same applies to ``df.append(df_different)``.
 
+See also the section on :ref:`merge dtypes<merging.dtypes>` for notes about preserving merge dtypes and performance.
+
+
 .. _categorical.union:
 
 Unioning
@@ -661,7 +673,7 @@ will be the union of the categories being combined.
 
 .. ipython:: python
 
-    from pandas.types.concat import union_categoricals
+    from pandas.api.types import union_categoricals
     a = pd.Categorical(["b", "c"])
     b = pd.Categorical(["a", "b"])
     union_categoricals([a, b])
@@ -693,6 +705,17 @@ The below raises ``TypeError`` because the categories are ordered and not identi
    In [3]: union_categoricals([a, b])
    Out[3]:
    TypeError: to union ordered Categoricals, all categories must be the same
+
+.. versionadded:: 0.20.0
+
+Ordered categoricals with different categories or orderings can be combined by
+using the ``ignore_ordered=True`` argument.
+
+.. ipython:: python
+
+    a = pd.Categorical(["a", "b", "c"], ordered=True)
+    b = pd.Categorical(["c", "b", "a"], ordered=True)
+    union_categoricals([a, b], ignore_order=True)
 
 ``union_categoricals`` also works with a ``CategoricalIndex``, or ``Series`` containing
 categorical data, but note that the resulting array will always be a plain ``Categorical``
