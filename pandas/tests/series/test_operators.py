@@ -2,6 +2,7 @@
 # pylint: disable-msg=E1101,W0612
 
 import pytest
+import pytz
 
 from collections import Iterable
 from datetime import datetime, timedelta
@@ -12,7 +13,7 @@ from numpy import nan, inf
 import numpy as np
 import pandas as pd
 
-from pandas import (Index, Series, DataFrame, isnull, bdate_range,
+from pandas import (Index, Series, DataFrame, isna, bdate_range,
                     NaT, date_range, timedelta_range,
                     _np_version_under1p8)
 from pandas.core.indexes.datetimes import Timestamp
@@ -725,9 +726,7 @@ class TestSeriesOperators(TestData):
         pytest.raises(TypeError, lambda: td2 - dt2)
 
     def test_sub_datetime_compat(self):
-        # GH 14088
-        tm._skip_if_no_pytz()
-        import pytz
+        # see gh-14088
         s = Series([datetime(2016, 8, 23, 12, tzinfo=pytz.utc), pd.NaT])
         dt = datetime(2016, 8, 22, 12, tzinfo=pytz.utc)
         exp = Series([Timedelta('1 days'), pd.NaT])
@@ -1000,7 +999,7 @@ class TestSeriesOperators(TestData):
             # boolean &, |, ^ should work with object arrays and propagate NAs
 
         ops = ['and_', 'or_', 'xor']
-        mask = s.isnull()
+        mask = s.isna()
         for bool_op in ops:
             f = getattr(operator, bool_op)
 
@@ -1721,8 +1720,8 @@ class TestSeriesOperators(TestData):
             a = a.reindex(exp_index)
             b = b.reindex(exp_index)
 
-            amask = isnull(a)
-            bmask = isnull(b)
+            amask = isna(a)
+            bmask = isna(b)
 
             exp_values = []
             for i in range(len(exp_index)):
@@ -1788,8 +1787,8 @@ class TestSeriesOperators(TestData):
 
         result = s + s.shift(1)
         result2 = s.shift(1) + s
-        assert isnull(result[0])
-        assert isnull(result2[0])
+        assert isna(result[0])
+        assert isna(result2[0])
 
         s = Series(['foo', 'bar', 'baz', np.nan])
         result = 'prefix_' + s

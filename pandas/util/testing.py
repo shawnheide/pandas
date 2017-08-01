@@ -50,13 +50,6 @@ from pandas import (bdate_range, CategoricalIndex, Categorical, IntervalIndex,
 
 from pandas._libs import testing as _testing
 from pandas.io.common import urlopen
-try:
-    import pytest
-    slow = pytest.mark.slow
-except ImportError:
-    # Should be ok to just ignore. If you actually need
-    # slow then you'll hit an import error long before getting here.
-    pass
 
 
 N = 30
@@ -115,6 +108,63 @@ def round_trip_pickle(obj, path=None):
     with ensure_clean(path) as path:
         pd.to_pickle(obj, path)
         return pd.read_pickle(path)
+
+
+def round_trip_pathlib(writer, reader, path=None):
+    """
+    Write an object to file specifed by a pathlib.Path and read it back
+
+    Parameters
+    ----------
+    writer : callable bound to pandas object
+        IO writing function (e.g. DataFrame.to_csv )
+    reader : callable
+        IO reading function (e.g. pd.read_csv )
+    path : str, default None
+        The path where the object is written and then read.
+
+    Returns
+    -------
+    round_trip_object : pandas object
+        The original object that was serialized and then re-read.
+    """
+
+    import pytest
+    Path = pytest.importorskip('pathlib').Path
+    if path is None:
+        path = '___pathlib___'
+    with ensure_clean(path) as path:
+        writer(Path(path))
+        obj = reader(Path(path))
+    return obj
+
+
+def round_trip_localpath(writer, reader, path=None):
+    """
+    Write an object to file specifed by a py.path LocalPath and read it back
+
+    Parameters
+    ----------
+    writer : callable bound to pandas object
+        IO writing function (e.g. DataFrame.to_csv )
+    reader : callable
+        IO reading function (e.g. pd.read_csv )
+    path : str, default None
+        The path where the object is written and then read.
+
+    Returns
+    -------
+    round_trip_object : pandas object
+        The original object that was serialized and then re-read.
+    """
+    import pytest
+    LocalPath = pytest.importorskip('py.path').local
+    if path is None:
+        path = '___localpath___'
+    with ensure_clean(path) as path:
+        writer(LocalPath(path))
+        obj = reader(LocalPath(path))
+    return obj
 
 
 def assert_almost_equal(left, right, check_exact=False,
@@ -270,25 +320,16 @@ def close(fignum=None):
 
 
 def _skip_if_32bit():
-    import pytest
     if is_platform_32bit():
+        import pytest
         pytest.skip("skipping for 32 bit")
 
 
-def _skip_module_if_no_mpl():
+def _skip_if_no_mpl():
     import pytest
 
     mpl = pytest.importorskip("matplotlib")
     mpl.use("Agg", warn=False)
-
-
-def _skip_if_no_mpl():
-    try:
-        import matplotlib as mpl
-        mpl.use("Agg", warn=False)
-    except ImportError:
-        import pytest
-        pytest.skip("matplotlib not installed")
 
 
 def _skip_if_mpl_1_5():
@@ -303,21 +344,11 @@ def _skip_if_mpl_1_5():
 
 
 def _skip_if_no_scipy():
-    try:
-        import scipy.stats  # noqa
-    except ImportError:
-        import pytest
-        pytest.skip("no scipy.stats module")
-    try:
-        import scipy.interpolate  # noqa
-    except ImportError:
-        import pytest
-        pytest.skip('scipy.interpolate missing')
-    try:
-        import scipy.sparse  # noqa
-    except ImportError:
-        import pytest
-        pytest.skip('scipy.sparse missing')
+    import pytest
+
+    pytest.importorskip("scipy.stats")
+    pytest.importorskip("scipy.sparse")
+    pytest.importorskip("scipy.interpolate")
 
 
 def _check_if_lzma():
@@ -333,32 +364,14 @@ def _skip_if_no_lzma():
 
 
 def _skip_if_no_xarray():
-    try:
-        import xarray
-    except ImportError:
-        import pytest
-        pytest.skip("xarray not installed")
+    import pytest
 
+    xarray = pytest.importorskip("xarray")
     v = xarray.__version__
+
     if v < LooseVersion('0.7.0'):
         import pytest
         pytest.skip("xarray not version is too low: {0}".format(v))
-
-
-def _skip_if_no_pytz():
-    try:
-        import pytz  # noqa
-    except ImportError:
-        import pytest
-        pytest.skip("pytz not installed")
-
-
-def _skip_if_no_dateutil():
-    try:
-        import dateutil  # noqa
-    except ImportError:
-        import pytest
-        pytest.skip("dateutil not installed")
 
 
 def _skip_if_windows_python_3():
@@ -441,16 +454,13 @@ def _skip_if_no_mock():
         try:
             from unittest import mock  # noqa
         except ImportError:
-            import nose
-            raise nose.SkipTest("mock is not installed")
+            import pytest
+            raise pytest.skip("mock is not installed")
 
 
 def _skip_if_no_ipython():
-    try:
-        import IPython  # noqa
-    except ImportError:
-        import nose
-        raise nose.SkipTest("IPython not installed")
+    import pytest
+    pytest.importorskip("IPython")
 
 # -----------------------------------------------------------------------------
 # locale utilities
@@ -1785,22 +1795,24 @@ def makePeriodFrame(nper=None):
 
 
 def makePanel(nper=None):
-    cols = ['Item' + c for c in string.ascii_uppercase[:K - 1]]
-    data = dict((c, makeTimeDataFrame(nper)) for c in cols)
-    return Panel.fromDict(data)
+    with warnings.catch_warnings(record=True):
+        cols = ['Item' + c for c in string.ascii_uppercase[:K - 1]]
+        data = dict((c, makeTimeDataFrame(nper)) for c in cols)
+        return Panel.fromDict(data)
 
 
 def makePeriodPanel(nper=None):
-    cols = ['Item' + c for c in string.ascii_uppercase[:K - 1]]
-    data = dict((c, makePeriodFrame(nper)) for c in cols)
-    return Panel.fromDict(data)
+    with warnings.catch_warnings(record=True):
+        cols = ['Item' + c for c in string.ascii_uppercase[:K - 1]]
+        data = dict((c, makePeriodFrame(nper)) for c in cols)
+        return Panel.fromDict(data)
 
 
 def makePanel4D(nper=None):
     with warnings.catch_warnings(record=True):
         d = dict(l1=makePanel(nper), l2=makePanel(nper),
                  l3=makePanel(nper))
-    return Panel4D(d)
+        return Panel4D(d)
 
 
 def makeCustomIndex(nentries, nlevels, prefix='#', names=False, ndupe_l=None,
@@ -2405,15 +2417,8 @@ def assert_raises_regex(_exception, _regexp, _callable=None,
     Check that the specified Exception is raised and that the error message
     matches a given regular expression pattern. This may be a regular
     expression object or a string containing a regular expression suitable
-    for use by `re.search()`.
-
-    This is a port of the `assertRaisesRegexp` function from unittest in
-    Python 2.7. However, with our migration to `pytest`, please refrain
-    from using this. Instead, use the following paradigm:
-
-    with pytest.raises(_exception) as exc_info:
-       func(*args, **kwargs)
-    exc_info.matches(reg_exp)
+    for use by `re.search()`. This is a port of the `assertRaisesRegexp`
+    function from unittest in Python 2.7.
 
     Examples
     --------

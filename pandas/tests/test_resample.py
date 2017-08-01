@@ -3,15 +3,18 @@
 from warnings import catch_warnings
 from datetime import datetime, timedelta
 from functools import partial
+from textwrap import dedent
 
+import pytz
 import pytest
+import dateutil
 import numpy as np
 
 import pandas as pd
 import pandas.tseries.offsets as offsets
 import pandas.util.testing as tm
-from pandas import (Series, DataFrame, Panel, Index, isnull,
-                    notnull, Timestamp)
+from pandas import (Series, DataFrame, Panel, Index, isna,
+                    notna, Timestamp)
 
 from pandas.core.dtypes.generic import ABCSeries, ABCDataFrame
 from pandas.compat import range, lrange, zip, product, OrderedDict
@@ -100,7 +103,7 @@ class TestResampleAPI(object):
             tm.assert_frame_equal(result, expected)
 
         # compat for pandas-like methods
-        for how in ['sort_values', 'isnull']:
+        for how in ['sort_values', 'isna']:
             with tm.assert_produces_warning(FutureWarning,
                                             check_stacklevel=False):
                 getattr(r, how)()
@@ -282,8 +285,7 @@ class TestResampleAPI(object):
         tm.assert_series_equal(r.A.sum(), r['A'].sum())
 
         # getting
-        with tm.assert_produces_warning(FutureWarning, check_stacklevel=False):
-            pytest.raises(AttributeError, lambda: r.F)
+        pytest.raises(AttributeError, lambda: r.F)
 
         # setting
         def f():
@@ -781,15 +783,19 @@ class Base(object):
 
         for freq in ['M', 'D', 'H']:
             # count retains dimensions too
-            methods = downsample_methods + ['count']
+            methods = downsample_methods + upsample_methods
             for method in methods:
                 result = getattr(f.resample(freq), method)()
+                if method != 'size':
+                    expected = f.copy()
+                else:
+                    # GH14962
+                    expected = Series([])
 
-                expected = f.copy()
                 expected.index = f.index._shallow_copy(freq=freq)
                 assert_index_equal(result.index, expected.index)
                 assert result.index.freq == expected.index.freq
-                assert_frame_equal(result, expected, check_dtype=False)
+                assert_almost_equal(result, expected, check_dtype=False)
 
             # test size for GH13212 (currently stays as df)
 
@@ -885,7 +891,7 @@ class TestDatetimeIndex(Base):
             g._cython_agg_general(f)
 
         assert g.ngroups == 2593
-        assert notnull(g.mean()).all()
+        assert notna(g.mean()).all()
 
         # construct expected val
         arr = [1] + [5] * 2592
@@ -942,7 +948,7 @@ class TestDatetimeIndex(Base):
         args = downsample_methods
 
         def _ohlc(group):
-            if isnull(group).all():
+            if isna(group).all():
                 return np.repeat(np.nan, 4)
             return [group[0], group.max(), group.min(), group[-1]]
 
@@ -1439,7 +1445,7 @@ class TestDatetimeIndex(Base):
 
     def test_ohlc_5min(self):
         def _ohlc(group):
-            if isnull(group).all():
+            if isna(group).all():
                 return np.repeat(np.nan, 4)
             return [group[0], group.max(), group.min(), group[-1]]
 
@@ -1669,6 +1675,28 @@ class TestDatetimeIndex(Base):
 
         result = df.groupby('group').resample('1D').ffill()
         assert result.val.dtype == np.int32
+
+    def test_resample_dtype_coerceion(self):
+
+        pytest.importorskip('scipy')
+
+        # GH 16361
+        df = {"a": [1, 3, 1, 4]}
+        df = pd.DataFrame(
+            df, index=pd.date_range("2017-01-01", "2017-01-04"))
+
+        expected = (df.astype("float64")
+                    .resample("H")
+                    .mean()
+                    ["a"]
+                    .interpolate("cubic")
+                    )
+
+        result = df.resample("H")["a"].mean().interpolate("cubic")
+        tm.assert_series_equal(result, expected)
+
+        result = df.resample("H").mean()["a"].interpolate("cubic")
+        tm.assert_series_equal(result, expected)
 
     def test_weekly_resample_buglet(self):
         # #1327
@@ -2424,10 +2452,7 @@ class TestPeriodIndex(Base):
                 start='2000', periods=3, freq='M')).resample('W').mean()
 
     def test_with_local_timezone_pytz(self):
-        # GH5430
-        tm._skip_if_no_pytz()
-        import pytz
-
+        # see gh-5430
         local_timezone = pytz.timezone('America/Los_Angeles')
 
         start = datetime(year=2013, month=11, day=1, hour=0, minute=0,
@@ -2450,10 +2475,7 @@ class TestPeriodIndex(Base):
         assert_series_equal(result, expected)
 
     def test_with_local_timezone_dateutil(self):
-        # GH5430
-        tm._skip_if_no_dateutil()
-        import dateutil
-
+        # see gh-5430
         local_timezone = 'dateutil/America/Los_Angeles'
 
         start = datetime(year=2013, month=11, day=1, hour=0, minute=0,
@@ -2584,7 +2606,7 @@ class TestPeriodIndex(Base):
 
         result = ts.resample('W-THU').asfreq()
 
-        assert result.isnull().all()
+        assert result.isna().all()
 
         result = ts.resample('W-THU').asfreq().ffill()[:-1]
         expected = ts.asfreq('W-THU').ffill()
@@ -2819,6 +2841,19 @@ class TestResamplerGrouper(object):
                                               fill_method='ffill')
             expected = df.groupby('A').resample('4s').mean().ffill()
             assert_frame_equal(result, expected)
+
+    def test_tab_complete_ipython6_warning(self, ip):
+        from IPython.core.completer import provisionalcompleter
+        code = dedent("""\
+        import pandas.util.testing as tm
+        s = tm.makeTimeSeries()
+        rs = s.resample("D")
+        """)
+        ip.run_code(code)
+
+        with tm.assert_produces_warning(None):
+            with provisionalcompleter('ignore'):
+                list(ip.Completer.completions('rs.', 1))
 
     def test_deferred_with_groupby(self):
 

@@ -1,5 +1,6 @@
 from warnings import catch_warnings
 
+import dateutil
 import numpy as np
 from numpy.random import randn
 
@@ -7,7 +8,7 @@ from datetime import datetime
 from pandas.compat import StringIO, iteritems
 import pandas as pd
 from pandas import (DataFrame, concat,
-                    read_csv, isnull, Series, date_range,
+                    read_csv, isna, Series, date_range,
                     Index, Panel, MultiIndex, Timestamp,
                     DatetimeIndex)
 from pandas.util import testing as tm
@@ -788,8 +789,8 @@ class TestAppend(ConcatenateBase):
         b = df[5:].loc[:, ['strings', 'ints', 'floats']]
 
         appended = a.append(b)
-        assert isnull(appended['strings'][0:4]).all()
-        assert isnull(appended['bools'][5:]).all()
+        assert isna(appended['strings'][0:4]).all()
+        assert isna(appended['bools'][5:]).all()
 
     def test_append_many(self):
         chunks = [self.frame[:5], self.frame[5:10],
@@ -803,7 +804,7 @@ class TestAppend(ConcatenateBase):
         result = chunks[0].append(chunks[1:])
         tm.assert_frame_equal(result.loc[:, self.frame.columns], self.frame)
         assert (result['foo'][15:] == 'bar').all()
-        assert result['foo'][:15].isnull().all()
+        assert result['foo'][:15].isna().all()
 
     def test_append_preserve_index_name(self):
         # #980
@@ -1780,9 +1781,6 @@ bar2,12,13,14,15
 
     def test_concat_tz_series_tzlocal(self):
         # see gh-13583
-        tm._skip_if_no_dateutil()
-        import dateutil
-
         x = [pd.Timestamp('2011-01-01', tz=dateutil.tz.tzlocal()),
              pd.Timestamp('2011-02-01', tz=dateutil.tz.tzlocal())]
         y = [pd.Timestamp('2012-01-01', tz=dateutil.tz.tzlocal()),

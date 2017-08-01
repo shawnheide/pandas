@@ -6,6 +6,7 @@ construction from the convenience range functions
 import pytest
 
 import numpy as np
+from pytz import timezone
 from datetime import datetime, timedelta, time
 
 import pandas as pd
@@ -31,6 +32,31 @@ class TestDateRanges(TestData):
     def test_date_range_gen_error(self):
         rng = date_range('1/1/2000 00:00', '1/1/2000 00:18', freq='5min')
         assert len(rng) == 4
+
+    @pytest.mark.parametrize("freq", ["AS", "YS"])
+    def test_begin_year_alias(self, freq):
+        # see gh-9313
+        rng = date_range("1/1/2013", "7/1/2017", freq=freq)
+        exp = pd.DatetimeIndex(["2013-01-01", "2014-01-01",
+                                "2015-01-01", "2016-01-01",
+                                "2017-01-01"], freq=freq)
+        tm.assert_index_equal(rng, exp)
+
+    @pytest.mark.parametrize("freq", ["A", "Y"])
+    def test_end_year_alias(self, freq):
+        # see gh-9313
+        rng = date_range("1/1/2013", "7/1/2017", freq=freq)
+        exp = pd.DatetimeIndex(["2013-12-31", "2014-12-31",
+                                "2015-12-31", "2016-12-31"], freq=freq)
+        tm.assert_index_equal(rng, exp)
+
+    @pytest.mark.parametrize("freq", ["BA", "BY"])
+    def test_business_end_year_alias(self, freq):
+        # see gh-9313
+        rng = date_range("1/1/2013", "7/1/2017", freq=freq)
+        exp = pd.DatetimeIndex(["2013-12-31", "2014-12-31",
+                                "2015-12-31", "2016-12-30"], freq=freq)
+        tm.assert_index_equal(rng, exp)
 
     def test_date_range_negative_freq(self):
         # GH 11018
@@ -299,10 +325,7 @@ class TestBusinessDateRange(object):
         tm.assert_index_equal(result, DatetimeIndex(exp_values))
 
     def test_range_tz_pytz(self):
-        # GH 2906
-        tm._skip_if_no_pytz()
-        from pytz import timezone
-
+        # see gh-2906
         tz = timezone('US/Eastern')
         start = tz.localize(datetime(2011, 1, 1))
         end = tz.localize(datetime(2011, 1, 3))
@@ -323,9 +346,6 @@ class TestBusinessDateRange(object):
         assert dr[2] == end
 
     def test_range_tz_dst_straddle_pytz(self):
-
-        tm._skip_if_no_pytz()
-        from pytz import timezone
         tz = timezone('US/Eastern')
         dates = [(tz.localize(datetime(2014, 3, 6)),
                   tz.localize(datetime(2014, 3, 12))),
@@ -349,8 +369,8 @@ class TestBusinessDateRange(object):
             assert np.all(dr.hour == 0)
 
     def test_range_tz_dateutil(self):
-        # GH 2906
-        tm._skip_if_no_dateutil()
+        # see gh-2906
+
         # Use maybe_get_tz to fix filename in tz under dateutil.
         from pandas._libs.tslib import maybe_get_tz
         tz = lambda x: maybe_get_tz('dateutil/' + x)

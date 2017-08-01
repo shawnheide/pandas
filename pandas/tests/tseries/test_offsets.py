@@ -148,8 +148,6 @@ class Base(object):
             assert isinstance(result, datetime)
             assert result.tzinfo is None
 
-            tm._skip_if_no_pytz()
-            tm._skip_if_no_dateutil()
             # Check tz is preserved
             for tz in self.timezones:
                 t = Timestamp('20080101', tz=tz)
@@ -157,7 +155,7 @@ class Base(object):
                 assert isinstance(result, datetime)
                 assert t.tzinfo == result.tzinfo
 
-        except (tslib.OutOfBoundsDatetime):
+        except tslib.OutOfBoundsDatetime:
             raise
         except (ValueError, KeyError) as e:
             pytest.skip(
@@ -284,9 +282,6 @@ class TestCommon(Base):
         if isinstance(dt, np.datetime64):
             # test tz when input is datetime or Timestamp
             return
-
-        tm._skip_if_no_pytz()
-        tm._skip_if_no_dateutil()
 
         for tz in self.timezones:
             expected_localize = expected.tz_localize(tz)
@@ -468,7 +463,6 @@ class TestCommon(Base):
                 assert isinstance(result, Timestamp)
                 assert result == expected
 
-            tm._skip_if_no_pytz()
             for tz in self.timezones:
                 expected_localize = expected.tz_localize(tz)
                 result = Timestamp(dt, tz=tz) + offset_s
@@ -4850,7 +4844,7 @@ class TestDST(object):
             hrs_pre = utc_offsets['utc_offset_daylight']
             hrs_post = utc_offsets['utc_offset_standard']
 
-            if dateutil.__version__ != LooseVersion('2.6.0'):
+            if dateutil.__version__ < LooseVersion('2.6.0'):
                 # buggy ambiguous behavior in 2.6.0
                 # GH 14621
                 # https://github.com/dateutil/dateutil/issues/321
@@ -4858,6 +4852,9 @@ class TestDST(object):
                     n=3, tstart=self._make_timestamp(self.ts_pre_fallback,
                                                      hrs_pre, tz),
                     expected_utc_offset=hrs_post)
+            elif dateutil.__version__ > LooseVersion('2.6.0'):
+                # fixed, but skip the test
+                continue
 
     def test_springforward_plural(self):
         # test moving from standard to daylight savings

@@ -81,6 +81,7 @@ class _Window(PandasObject, SelectionMixin):
         self.freq = freq
         self.center = center
         self.win_type = win_type
+        self.win_freq = None
         self.axis = obj._get_axis_number(axis) if axis is not None else None
         self.validate()
 
@@ -341,21 +342,23 @@ class _Window(PandasObject, SelectionMixin):
 
     Parameters
     ----------
-    how : string, default None (DEPRECATED)
-        Method for down- or re-sampling""")
+    how : string, default None
+        .. deprecated:: 0.18.0
+           Method for down- or re-sampling""")
 
     _shared_docs['mean'] = dedent("""
     %(name)s mean
 
     Parameters
     ----------
-    how : string, default None (DEPRECATED)
-        Method for down- or re-sampling""")
+    how : string, default None
+        .. deprecated:: 0.18.0
+           Method for down- or re-sampling""")
 
 
 class Window(_Window):
     """
-    Provides rolling window calculcations.
+    Provides rolling window calculations.
 
     .. versionadded:: 0.18.0
 
@@ -373,9 +376,10 @@ class Window(_Window):
         Minimum number of observations in window required to have a value
         (otherwise result is NA). For a window that is specified by an offset,
         this will default to 1.
-    freq : string or DateOffset object, optional (default None) (DEPRECATED)
-        Frequency to conform the data to before computing the statistic.
-        Specified as a frequency string or DateOffset object.
+    freq : string or DateOffset object, optional (default None)
+        .. deprecated:: 0.18.0
+           Frequency to conform the data to before computing the statistic.
+           Specified as a frequency string or DateOffset object.
     center : boolean, default False
         Set the labels at the center of the window.
     win_type : string, default None
@@ -570,8 +574,9 @@ class Window(_Window):
         ----------
         mean : boolean, default True
             If True computes weighted mean, else weighted sum
-        how : string, default to None (DEPRECATED)
-            how to resample
+        how : string, default to None
+            .. deprecated:: 0.18.0
+               how to resample
 
         Returns
         -------
@@ -735,8 +740,9 @@ class _Rolling(_Window):
         window : int/array, default to _get_window()
         center : boolean, default to self.center
         check_minp : function, default to _use_window
-        how : string, default to None (DEPRECATED)
-            how to resample
+        how : string, default to None
+            .. deprecated:: 0.18.0
+               how to resample
 
         Returns
         -------
@@ -822,7 +828,7 @@ class _Rolling_and_Expanding(_Rolling):
 
         results = []
         for b in blocks:
-            result = b.notnull().astype(int)
+            result = b.notna().astype(int)
             result = self._constructor(result, window=window, min_periods=0,
                                        center=self.center,
                                        closed=self.closed).sum()
@@ -830,7 +836,7 @@ class _Rolling_and_Expanding(_Rolling):
 
         return self._wrap_results(results, blocks, obj)
 
-    _shared_docs['apply'] = dedent("""
+    _shared_docs['apply'] = dedent(r"""
     %(name)s function apply
 
     Parameters
@@ -863,8 +869,9 @@ class _Rolling_and_Expanding(_Rolling):
 
     Parameters
     ----------
-    how : string, default 'max' (DEPRECATED)
-        Method for down- or re-sampling""")
+    how : string, default 'max'
+        .. deprecated:: 0.18.0
+           Method for down- or re-sampling""")
 
     def max(self, how=None, *args, **kwargs):
         nv.validate_window_func('max', args, kwargs)
@@ -877,8 +884,9 @@ class _Rolling_and_Expanding(_Rolling):
 
     Parameters
     ----------
-    how : string, default 'min' (DEPRECATED)
-        Method for down- or re-sampling""")
+    how : string, default 'min'
+        .. deprecated:: 0.18.0
+           Method for down- or re-sampling""")
 
     def min(self, how=None, *args, **kwargs):
         nv.validate_window_func('min', args, kwargs)
@@ -895,8 +903,9 @@ class _Rolling_and_Expanding(_Rolling):
 
     Parameters
     ----------
-    how : string, default 'median' (DEPRECATED)
-        Method for down- or re-sampling""")
+    how : string, default 'median'
+        .. deprecated:: 0.18.0
+           Method for down- or re-sampling""")
 
     def median(self, how=None, **kwargs):
         if self.freq is not None and how is None:
@@ -966,8 +975,15 @@ class _Rolling_and_Expanding(_Rolling):
 
         def f(arg, *args, **kwargs):
             minp = _use_window(self.min_periods, window)
-            return _window.roll_quantile(arg, window, minp, indexi,
-                                         self.closed, quantile)
+            if quantile == 1.0:
+                return _window.roll_max(arg, window, minp, indexi,
+                                        self.closed)
+            elif quantile == 0.0:
+                return _window.roll_min(arg, window, minp, indexi,
+                                        self.closed)
+            else:
+                return _window.roll_quantile(arg, window, minp, indexi,
+                                             self.closed, quantile)
 
         return self._apply(f, 'quantile', quantile=quantile,
                            **kwargs)
@@ -996,7 +1012,12 @@ class _Rolling_and_Expanding(_Rolling):
             # only default unset
             pairwise = True if pairwise is None else pairwise
         other = self._shallow_copy(other)
-        window = self._get_window(other)
+
+        # GH 16058: offset window
+        if self.is_freq_type:
+            window = self.win_freq
+        else:
+            window = self._get_window(other)
 
         def _get_cov(X, Y):
             # GH #12373 : rolling functions error on float32 data
@@ -1074,7 +1095,7 @@ class Rolling(_Rolling_and_Expanding):
         super(Rolling, self).validate()
 
         # we allow rolling on a datetimelike index
-        if (self.is_datetimelike and
+        if ((self.obj.empty or self.is_datetimelike) and
                 isinstance(self.window, (compat.string_types, DateOffset,
                                          timedelta))):
 
@@ -1088,6 +1109,7 @@ class Rolling(_Rolling_and_Expanding):
                                           "based windows")
 
             # this will raise ValueError on non-fixed freqs
+            self.win_freq = self.window
             self.window = freq.nanos
             self.win_type = 'freq'
 
@@ -1322,9 +1344,10 @@ class Expanding(_Rolling_and_Expanding):
     min_periods : int, default None
         Minimum number of observations in window required to have a value
         (otherwise result is NA).
-    freq : string or DateOffset object, optional (default None) (DEPRECATED)
-        Frequency to conform the data to before computing the statistic.
-        Specified as a frequency string or DateOffset object.
+    freq : string or DateOffset object, optional (default None)
+        .. deprecated:: 0.18.0
+           Frequency to conform the data to before computing the statistic.
+           Specified as a frequency string or DateOffset object.
     center : boolean, default False
         Set the labels at the center of the window.
     axis : int or string, default 0
@@ -1586,8 +1609,9 @@ class EWM(_Rolling):
     min_periods : int, default 0
         Minimum number of observations in window required to have a value
         (otherwise result is NA).
-    freq : None or string alias / date offset object, default=None (DEPRECATED)
-        Frequency to conform to before computing statistic
+    freq : None or string alias / date offset object, default=None
+        .. deprecated:: 0.18.0
+           Frequency to conform to before computing statistic
     adjust : boolean, default True
         Divide by decaying adjustment factor in beginning periods to account
         for imbalance in relative weightings (viewing EWMA as a moving average)
@@ -1720,8 +1744,9 @@ class EWM(_Rolling):
         Parameters
         ----------
         func : string/callable to apply
-        how : string, default to None (DEPRECATED)
-            how to resample
+        how : string, default to None
+            .. deprecated:: 0.18.0
+               how to resample
 
         Returns
         -------
@@ -1904,7 +1929,8 @@ def _flex_binary_moment(arg1, arg2, f, pairwise=False):
 
                 # TODO: not the most efficient (perf-wise)
                 # though not bad code-wise
-                from pandas import Panel, MultiIndex, Index
+                from pandas import Panel, MultiIndex
+
                 with warnings.catch_warnings(record=True):
                     p = Panel.from_dict(results).swapaxes('items', 'major')
                     if len(p.major_axis) > 0:
@@ -1927,10 +1953,10 @@ def _flex_binary_moment(arg1, arg2, f, pairwise=False):
                 # reset our index names to arg1 names
                 # reset our column names to arg2 names
                 # careful not to mutate the original names
-                result.columns = Index(result.columns).set_names(
-                    arg2.columns.name)
+                result.columns = result.columns.set_names(
+                    arg2.columns.names)
                 result.index = result.index.set_names(
-                    [arg1.index.name, arg1.columns.name])
+                    arg1.index.names + arg1.columns.names)
 
                 return result
 
